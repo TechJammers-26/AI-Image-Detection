@@ -1,0 +1,11 @@
+# Core harness (torch-free -- evaluate/predict/error_analysis run on these alone)
+numpy>=1.24
+Pillow>=10.0
+opencv-python-headless>=4.8   # optional: true separable Gaussian blur; PIL fallback exists
+
+# Training only (Person 3). Install the CUDA build that matches your GPU.
+torch>=2.1
+torchvision>=0.16
+
+# Optional: plots for the report / demo video
+matplotlib>=3.7
