@@ -42,16 +42,12 @@ before any checkpoint exists.
 
 | File | Owner | Deliverable |
 |---|---|---|
-| `scripts/check_data.py`, `src/aigcdet/datasets.py` | Person 1 | clean dataset folders + sanity report |
-| `src/aigcdet/augmentations.py`, `scripts/make_transformed_sets.py`, `tests/` | Person 2 | transform module |
-| `src/aigcdet/models.py`, `src/aigcdet/train.py` | Person 3 | `best_model.pt` + training logs |
-| `src/aigcdet/evaluate.py`, `src/aigcdet/metrics.py` | Person 4 | Robustness Evaluation Summary (#4) |
-| `src/aigcdet/predict.py`, `src/aigcdet/error_analysis.py` | Person 5 | inference script, Error Analysis Note (#5), README, Devpost, video |
+| `scripts/check_data.py`, `src/aigcdet/datasets.py` | Hui Shi | clean dataset folders + sanity report |
+| `src/aigcdet/augmentations.py`, `scripts/make_transformed_sets.py`, `tests/` | Yu Yang | transform module |
+| `src/aigcdet/models.py`, `src/aigcdet/train.py` | Erika | `best_model.pt` + training logs |
+| `src/aigcdet/evaluate.py`, `src/aigcdet/metrics.py` | Celine | Robustness Evaluation Summary (#4) |
+| `src/aigcdet/predict.py`, `src/aigcdet/error_analysis.py` | Yi Jun | inference script, Error Analysis Note (#5), README, Devpost, video |
 
-Interfaces are frozen; bodies are not. Person 1 can swap CIFAKE for WildFake and
-Person 3 can swap ResNet for a ViT without anyone else editing a line, because
-everything crosses a boundary defined in `datasets.py` (folder layout) or
-`predictors.py` (`predict_proba`).
 
 ---
 
