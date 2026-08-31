@@ -92,7 +92,7 @@ AI-Image-Detection/
 │   ├── predictions_demo_heldout.json   # Image directory in -> JSON predictions out
 │   ├── predictions_demo_continuous.json
 │   ├── predictions_demo_spec.json
-├── checkpoints/                        # Trained weights (not committed — see Setup)
+├── checkpoints/                        # Trained weights (see Setup)
 ├── LICENSE
 ├── Makefile
 ├── requirements.txt
