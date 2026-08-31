@@ -238,9 +238,7 @@ EXPECTED_SPLITS = ("train", "val", "test")
 BALANCE_TOL = 0.10  # fraction deviation from an even class split before WARN
 
 
-# --------------------------------------------------------------------------- #
 # per-file worker
-# --------------------------------------------------------------------------- #
 def inspect(path_str: str, want_phash: bool):
     """Return dict describing one file. Runs in a worker process."""
     p = Path(path_str)
@@ -283,9 +281,7 @@ def inspect(path_str: str, want_phash: bool):
     return out
 
 
-# --------------------------------------------------------------------------- #
 # near-dupe grouping via BK-tree over perceptual hashes
-# --------------------------------------------------------------------------- #
 class BKTree:
     def __init__(self):
         self.root = None  # (hash_int, children: {dist: node})
@@ -339,7 +335,6 @@ class Union:
             self.parent[ra] = rb
 
 
-# --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path, help="dataset root containing <split>/<class>/ dirs")
@@ -355,7 +350,7 @@ def main():
         print(f"FATAL: not a directory: {root}", file=sys.stderr)
         sys.exit(2)
 
-    # ---- discover layout ----------------------------------------------------
+    # discover layout 
     splits = sorted(d.name for d in root.iterdir() if d.is_dir())
     if not splits:
         print(f"FATAL: no split subdirectories under {root}", file=sys.stderr)
@@ -397,7 +392,7 @@ def main():
 
     by_path = {r["path"]: r for r in results}
 
-    # ---- counts -----------------------------------------------------------
+    # counts
     counts: dict[tuple[str, str], int] = defaultdict(int)
     all_classes = set()
     for split, cls, _ in files:
@@ -424,7 +419,7 @@ def main():
     print("-" * 32)
     print(f"{'':<10}{'GRAND':<10}{grand:>12,}")
 
-    # ---- class balance --------------------------------------------------
+    # class balance
     print("\n" + "=" * 60)
     print("CLASS BALANCE")
     print("=" * 60)
@@ -442,7 +437,7 @@ def main():
         if worst > BALANCE_TOL:
             warn.append(f"'{split}' class imbalance: {desc} (>{BALANCE_TOL*100:.0f}% from even)")
 
-    # ---- structural / missing ----------------------------------------
+    # structural / missing
     print("\n" + "=" * 60)
     print("STRUCTURE")
     print("=" * 60)
@@ -460,7 +455,7 @@ def main():
     print(f"classes found: {all_classes}")
     print(f"empty class dirs: {empty_class_dirs or 'none'}")
 
-    # ---- file types --------------------------------------------------
+    # file types
     print("\n" + "=" * 60)
     print("FILE TYPES")
     print("=" * 60)
@@ -485,7 +480,7 @@ def main():
             rel = Path(p).relative_to(root)
             print(f"    {rel}  -> actual {by_path[p]['fmt']}")
 
-    # ---- corruption ------------------------------------------------
+    #  corruption
     print("\n" + "=" * 60)
     print("CORRUPTED / UNREADABLE")
     print("=" * 60)
@@ -500,7 +495,7 @@ def main():
         if len(corrupt) > args.max_list:
             print(f"  ... and {len(corrupt) - args.max_list} more")
 
-    # ---- exact duplicates ----------------------------------------
+    # exact duplicates
     print("\n" + "=" * 60)
     print("EXACT DUPLICATES (identical file bytes)")
     print("=" * 60)
@@ -528,7 +523,7 @@ def main():
         if cross_split:
             fail.append(f"{cross_split} duplicate group(s) leak across splits")
 
-    # ---- near duplicates ---------------------------------------
+    # near duplicates 
     if args.near_dupes:
         print("\n" + "=" * 60)
         print(f"NEAR DUPLICATES (pHash Hamming <= {args.near_dupe_threshold})")
@@ -574,7 +569,7 @@ def main():
             if n_cross:
                 fail.append(f"{n_cross} near-duplicate cluster(s) span splits")
 
-    # ---- verdict --------------------------------------------------
+    # verdic
     print("\n" + "=" * 60)
     print("VERDICT")
     print("=" * 60)
@@ -663,13 +658,13 @@ def restructure(src: Path, dst: Path, seed: int, val_fraction: float):
 
     counts = {}
 
-    # --- test set: copy as-is ---
+    #  test set: copy as-is 
     for raw_cls, cls in test_classes.items():
         files = list_images(src / "test" / raw_cls)
         copy_all(files, dst / "test" / cls)
         counts[("test", cls)] = len(files)
 
-    # --- train -> train/val, stratified per class ---
+    #  train -> train/val, stratified per class 
     for raw_cls, cls in train_classes.items():
         files = list(list_images(src / "train" / raw_cls))
         random.shuffle(files)
@@ -680,7 +675,7 @@ def restructure(src: Path, dst: Path, seed: int, val_fraction: float):
         counts[("train", cls)] = len(train_files)
         counts[("val", cls)] = len(val_files)
 
-    # --- report ---
+    #  report 
     classes = sorted(set(train_classes.values()))
     print(f"\nsrc: {src}\ndst: {dst}\nseed: {seed}   val fraction: {val_fraction}\n")
     print(f"{'split':<8}{'class':<10}{'count':>10}")
@@ -782,9 +777,8 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
-# --------------------------------------------------------------------------- #
+
 # Defaults
-# --------------------------------------------------------------------------- #
 
 #: File extensions treated as images by default. Lower-case, leading dot.
 #: Override via the ``extensions`` parameter of :func:`build_dataloaders`.
@@ -801,9 +795,7 @@ IMAGENET_MEAN: tuple[float, float, float] = (0.485, 0.456, 0.406)
 IMAGENET_STD: tuple[float, float, float] = (0.229, 0.224, 0.225)
 
 
-# --------------------------------------------------------------------------- #
 # Image loader
-# --------------------------------------------------------------------------- #
 
 def rgb_loader(path: str) -> Image.Image:
     """Open an image file and force it to 3-channel RGB.
@@ -817,9 +809,7 @@ def rgb_loader(path: str) -> Image.Image:
         return img.convert("RGB")
 
 
-# --------------------------------------------------------------------------- #
 # Transforms
-# --------------------------------------------------------------------------- #
 
 def default_transform(
     image_size: int | tuple[int, int] = 224,
@@ -862,10 +852,7 @@ def default_transform(
     )
 
 
-# --------------------------------------------------------------------------- #
 # Result bundle
-# --------------------------------------------------------------------------- #
-
 @dataclass
 class DatasetBundle:
     """Everything :func:`build_dataloaders` produces, in one object.
@@ -900,7 +887,7 @@ class DatasetBundle:
     class_to_idx: dict[str, int]
     root: Path
 
-    # -- convenience accessors ------------------------------------------------
+    # convenience accessors 
 
     def datasets(self) -> dict[str, Dataset]:
         """Return ``{"train": ..., "val": ..., "test": ...}`` datasets."""
@@ -944,29 +931,27 @@ class DatasetBundle:
         )
 
 
-# --------------------------------------------------------------------------- #
 # Main entry point
-# --------------------------------------------------------------------------- #
 
 def build_dataloaders(
     root: str | os.PathLike,
     *,
-    # --- batching ---------------------------------------------------------
+    #  batching 
     batch_size: int = 32,
     num_workers: int = 4,
     shuffle: bool = True,
     drop_last: bool = False,
     pin_memory: Optional[bool] = None,
-    # --- image pipeline --------------------------------------------------
+    #  image pipeline 
     image_size: int | tuple[int, int] = 224,
     mean: Sequence[float] = IMAGENET_MEAN,
     std: Sequence[float] = IMAGENET_STD,
     train_transform: Optional[Callable] = None,
     eval_transform: Optional[Callable] = None,
-    # --- file handling -------------------------------------------------
+    # file handling 
     extensions: Sequence[str] = DEFAULT_EXTENSIONS,
     loader: Callable[[str], Image.Image] = rgb_loader,
-    # --- reproducibility ---------------------------------------------
+    # reproducibility 
     seed: Optional[int] = None,
 ) -> DatasetBundle:
     """Build train/val/test datasets + dataloaders from an ImageFolder root.
@@ -1057,7 +1042,7 @@ def build_dataloaders(
     eval_tf = eval_transform or default_transform(image_size, mean=mean, std=std)
     split_tf = {"train": train_tf, "val": eval_tf, "test": eval_tf}
 
-    # --- build one ImageFolder per split ---------------------------------
+    # build one ImageFolder per split 
     datasets: dict[str, ImageFolder] = {}
     for split in SPLITS:
         split_dir = root / split
@@ -1079,7 +1064,7 @@ def build_dataloaders(
             )
         datasets[split] = ds
 
-    # --- sanity-check that all splits share the same classes ------------
+    # sanity-check that all splits share the same classes 
     class_lists = {split: ds.classes for split, ds in datasets.items()}
     reference = class_lists["train"]
     mismatched = {s: c for s, c in class_lists.items() if c != reference}
@@ -1090,7 +1075,7 @@ def build_dataloaders(
             + "\nEvery split must contain the same set of class sub-folders."
         )
 
-    # --- wrap each dataset in a DataLoader ------------------------------
+    # wrap each dataset in a DataLoader 
     generator: Optional[torch.Generator] = None
     if seed is not None:
         generator = torch.Generator()
@@ -1128,9 +1113,7 @@ def build_dataloaders(
     )
 
 
-# --------------------------------------------------------------------------- #
 # Usage example / smoke test
-# --------------------------------------------------------------------------- #
 
 if __name__ == "__main__":
     # Points at the CIFAKE dataset we built at ./data/dataset. Change this path
