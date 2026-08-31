@@ -363,16 +363,6 @@ def canonicalize(
     max_side: int = 512,
     jpeg_quality: int | None = 95,
 ) -> Image.Image:
-    """
-    Strip container bias BEFORE anything else touches the image.
-
-    Report clean accuracy with AND without this
-    step: the gap is the size of the shortcut your model was leaning on, and it
-    is the most defensible number in the whole submission.
-
-    Apply to train, val and test identically, and apply it before the eval
-    transforms so severities are measured on comparable inputs.
-    """
     img = _as_rgb(img)
     w, h = img.size
     if max_side and max(w, h) > max_side:
