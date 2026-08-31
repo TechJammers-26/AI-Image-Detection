@@ -766,10 +766,7 @@ for epoch in range(EPOCHS):
 
     print("=" * 50)
 
-    # -----------------------------------
     # TRAIN
-    # -----------------------------------
-
     (
         train_loss,
         train_accuracy,
@@ -782,10 +779,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # -----------------------------------
     # CLEAN VALIDATION
-    # -----------------------------------
-
     (
         val_loss,
         val_accuracy,
@@ -797,10 +791,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # -----------------------------------
     # SAVE HISTORY
-    # -----------------------------------
-
     history["epoch"].append(
         epoch + 1
     )
@@ -828,10 +819,6 @@ for epoch in range(EPOCHS):
     history["val_auc"].append(
         val_auc
     )
-
-    # -----------------------------------
-    # PRINT RESULTS
-    # -----------------------------------
 
     print(
         f"Train Loss: "
@@ -865,9 +852,7 @@ for epoch in range(EPOCHS):
         f"{val_auc:.4f}"
     )
 
-    # -----------------------------------
     # SAVE BEST CHECKPOINT
-    # -----------------------------------
 
     if (
         val_accuracy
@@ -1073,130 +1058,4 @@ print("Best epoch:", checkpoint["epoch"])
 print("Clean val accuracy:", checkpoint["val_accuracy"])
 print("Clean val AUC:", checkpoint["val_auc"])
 
-"""## Runs for each augmentation policy
-
-```
-                 Same pretrained backbone
-                          │
-          ┌───────────────┼────────────────┐
-          │               │                │
-          ↓               ↓                ↓
-        none          continuous        heldout          spec
-          │               │                │              │
-       ~6 epochs        ~6 epochs        ~6 epochs      ~6 epochs
-          │               │                │              │
-          ↓               ↓                ↓              ↓
-       BEST            BEST             BEST           BEST
-     checkpoint      checkpoint       checkpoint     checkpoint
-```
-
-
-What each augmentation policy means:
-```
-none:
-
-Does a normal pretrained classifier work?
-
-This gives you the baseline.
-
-continuous:
-
-Does training with randomly sampled realistic degradation improve robustness?
-
-heldout:
-
-Can the model generalise to degradation severities it did not directly train on?
-
-This is the important one.
-
-spec:
-
-How well could the model perform if it directly saw the benchmark augmentation conditions during training?
-
-Because of this leakage, treat spec as a sanity check, not the headline result.
-```
-
-**(can delete this when done -- just for understanding purposes)**
-
-
-```python
-POLICY = "heldout"
-NUM_EPOCHS = 6
-```
-
-During training, an epoch looks smt liddis
-
-```
-Training image
-      ↓
-heldout augmentation
-      ↓
-resize / normalize
-      ↓
-EfficientNet
-      ↓
-prediction
-      ↓
-BCE loss
-      ↓
-backpropagation
-      ↓
-update model weights
-```
-
-Then,
-
-```
-CLEAN validation dataset
-          ↓
-       model
-          ↓
- Accuracy + ROC-AUC
-
-Epoch 1
-Val Accuracy = 81%
-Val AUC      = 0.86
-```
-
-Then epoch 2 learns from the weights of epoch 1
-
-We gna repeat for 6 epochs, then use the epoch with the best weights as our heldout checkpoint
-
-```
-if val_accuracy > best_val_accuracy:
-    save_checkpoint()
-
-if roc_auc > best_roc_auc:
-    save_checkpoint()
-```
-
-
-
-To save the checkpoint, might be good to have enough metadata to reproduce the run
-
-
-```
-model/backbone
-augmentation policy
-best epoch
-validation accuracy
-validation AUC
-optimizer
-learning rate
-image size
-```
-
-
-```
-torch.save({
-    "epoch": epoch,
-    "model_state_dict": model.state_dict(),
-    "optimizer_state_dict": optimizer.state_dict(),
-    "val_accuracy": val_accuracy,
-    "val_auc": val_auc,
-    "policy": POLICY,
-    "backbone": "efficientnet_b0"
-}, checkpoint_path)
-```
-"""
 
