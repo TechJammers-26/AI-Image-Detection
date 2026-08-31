@@ -34,9 +34,8 @@ def _map(fn, items):
         return list(ex.map(fn, items, chunksize=256))
 
 
-# --------------------------------------------------------------------------- #
 # small data structures for near-dupe grouping
-# --------------------------------------------------------------------------- #
+
 class BKTree:
     """Metric tree over 64-bit hashes for fast "within Hamming distance d" queries."""
 
