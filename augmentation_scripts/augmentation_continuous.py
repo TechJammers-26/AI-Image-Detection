@@ -497,7 +497,7 @@ def train_one_epoch(
             non_blocking=True
         )
 
-        # IMPORTANT: BCEWithLogitsLoss needs FLOAT labels
+        # BCEWithLogitsLoss needs FLOAT labels
         labels = labels.float().to(
             device,
             non_blocking=True
@@ -670,10 +670,7 @@ for epoch in range(EPOCHS):
     print(f"Epoch {epoch + 1}/{EPOCHS}")
     print("=" * 60)
 
-    # --------------------------------------------------------
     # TRAIN
-    # --------------------------------------------------------
-
     (
         train_loss,
         train_accuracy,
@@ -686,10 +683,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # --------------------------------------------------------
     # CLEAN VALIDATION
-    # --------------------------------------------------------
-
     (
         val_loss,
         val_accuracy,
@@ -701,9 +695,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # --------------------------------------------------------
     # SAVE HISTORY
-    # --------------------------------------------------------
 
     history["epoch"].append(epoch + 1)
 
@@ -731,10 +723,6 @@ for epoch in range(EPOCHS):
         val_auc
     )
 
-    # --------------------------------------------------------
-    # PRINT
-    # --------------------------------------------------------
-
     print(
         f"Train Loss:      {train_loss:.4f}"
     )
@@ -761,10 +749,7 @@ for epoch in range(EPOCHS):
         f"Clean Val AUC:      {val_auc:.4f}"
     )
 
-    # --------------------------------------------------------
-    # SAVE BEST CHECKPOINT
-    # --------------------------------------------------------
-
+    # save best chechkpoint
     if val_accuracy > best_val_accuracy:
 
         best_val_accuracy = val_accuracy
