@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 make_transformed_sets.py wraps the transformations implemented by augmentation.py
 and ouputs the transformed image sets
