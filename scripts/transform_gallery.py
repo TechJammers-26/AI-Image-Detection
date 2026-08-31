@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 """
-transform_gallery.py  --  OWNER: Person 2.  Visual QA + a demo-video asset.
-    python scripts/transform_gallery.py --out outputs/gallery.png
-    python scripts/transform_gallery.py --image path/to/real.jpg --out outputs/g.png
-
-Produces a PNG we look at ourselves.
-Unit tests prove the numbers are right. This proves the numbers LOOK right.
-For e.g. A sigma=2.0 blur that renders as an obviously unblurred image means the parameter
-is being interpreted differently from how it is documented, and every row of the
-robustness table inherits that mistake.
-
-
+Produces a four quadrant PNG for visual inspection.
 """
 
 from __future__ import annotations
@@ -31,10 +21,9 @@ from aigcdet.augmentations import (EVAL_BY_NAME, blur_backend, canonicalize,  # 
 
 def synthetic_sample(size: int = 210) -> Image.Image:
     """
-    Four-quadrant test card, built AT the display size so the sheet renders 1:1
-    and no resampling can hide a transform's effect.
+    Four-quadrant test card
 
-      top-left     2px checkerboard   -> dies first under blur / resize
+      top-left     2px checkerboard   -> shows blur / resize
       top-right    smooth gradient    -> shows JPEG blocking and noise
       bottom-left  concentric rings   -> shows the low-pass cutoff directly
       bottom-right colour patches      -> shows jitter
@@ -65,15 +54,6 @@ def synthetic_sample(size: int = 210) -> Image.Image:
 
 
 def _fit(img: Image.Image, tile: int) -> Image.Image:
-    """
-    Place `img` in a tile x tile canvas at NATIVE resolution: centre-crop if it is
-    bigger, centre-pad if smaller. Never resample.
-
-    This matters. An earlier version resized every tile to fit, and the resize
-    itself low-pass filtered the image -- sigma=2.0 blur and clean rendered
-    almost identically, which would have passed visual QA while hiding whether
-    the blur was applied at all.
-    """
     canvas = Image.new("RGB", (tile, tile), (32, 32, 36))
     w, h = img.size
     if w > tile or h > tile:
