@@ -1,18 +1,6 @@
-#!/usr/bin/env python3
 """
 make_transformed_sets.py wraps the transformations implemented by augmentation.py
 and ouputs the transformed image sets
-
-Materialise transformed copies of an image tree, one folder per condition.
-
-    python scripts/make_transformed_sets.py -- input data/processed/test 
-        --out data/transformed --conditions jpeg_q30,blur_s2.0,chain_resize50_jpeg70
-
-Produces, preserving the class subfolders so it stays ImageFolder-compatible:
-
-    data/transformed/jpeg_q30/real/...   jpeg_q30/fake/...
-    data/transformed/blur_s2.0/...
-    data/transformed/MANIFEST.json       exact params, seeds, backend, checksums
 """
 
 from __future__ import annotations
@@ -42,7 +30,7 @@ def _digest(p: Path) -> str:
 def process_one(src: Path, in_root: Path, out_root: Path, condition: str,
                 fmt: str, do_canon: bool, quality: int) -> dict:
     rel = src.relative_to(in_root)
-    key = str(rel)                      # the SAME key evaluate.py seeds with
+    key = str(rel)                      
     spec = get_eval_transform(condition)
     with Image.open(src) as im:
         img = im.convert("RGB")
