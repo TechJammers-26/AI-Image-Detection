@@ -95,9 +95,7 @@ def _as_rgb(img: Image.Image) -> Image.Image:
     return img if img.mode == "RGB" else img.convert("RGB")
 
 
-# ==========================================================================
 # The six primitives
-# ==========================================================================
 def jpeg_compress(img: Image.Image, quality: int) -> Image.Image:
     """Real JPEG round trip. quality in 1..95 (spec uses 90/70/50/30)."""
     img = _as_rgb(img)
