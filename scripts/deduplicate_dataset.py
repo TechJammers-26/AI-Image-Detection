@@ -1,49 +1,6 @@
 #!/usr/bin/env python3
-"""Build a LEAKAGE-FREE ImageFolder dataset from a raw {train,test}/{CLASS}/ download.
-
-This replaces ``restructure_dataset.py`` for the "I want cleaned data" path: it
-does the same train/val split, but first removes duplicates that would leak
-information from the training data into the held-out test set (or cause the
-model to be scored on images it trained on).
-
-Cleaning applied
-----------------
-1. EXACT duplicates (identical file bytes -- sha256). Always on.
-   a. Every image in the train pool that is byte-identical to ANY test image is
-      dropped  (train -> test leakage).
-   b. Internal duplicate groups inside the train pool collapse to one image.
-
-2. NEAR duplicates (perceptual hash -- pHash Hamming distance). OFF by default;
-   enable with ``--near-dupe-threshold N`` (try 2-3 for 32x32 images).
-   Same two rules as above, using pHash closeness instead of exact match.
-   NOTE: at 32x32, pHash produces false positives (visually distinct images can
-   collide), so near-dupe removal is a judgement call -- the report prints
-   exactly what it removed so you can eyeball it.
-
-3. ``test/`` is copied UNCHANGED by default (it is the standard CIFAKE
-   benchmark, so keeping it intact keeps your numbers comparable to published
-   results). Pass ``--dedupe-test`` to also collapse internal duplicate groups
-   within test.
-
-Then the cleaned train pool is split into train (``--train-fraction``, default
-0.85) and val, stratified by class, with a fixed ``--seed``.
-
-Output:  <dst>/{train,val,test}/<class>/   (files are COPIED)
-The raw <src> download is never modified.
-A human-readable summary is written to  <dst>/_cleaning_report.txt
-
-Examples
---------
-Exact-dedupe CIFAKE from the original CLI download into ./data/dataset_clean:
-
-    python3 deduplicate_dataset.py --src ./archive --dst ./data/dataset_clean
-
-From a fresh kagglehub download, also removing near-duplicates:
-
-    python3 deduplicate_dataset.py \\
-        --src ~/.cache/kagglehub/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images/versions/3 \\
-        --dst ./data/dataset_clean \\
-        --near-dupe-threshold 3
+"""
+Removes duplicates (identical file bytes -- sha256) and prints reports of near duplicates so that we can make judgement calls of whether to remove it or not.
 """
 from __future__ import annotations
 
@@ -58,15 +15,11 @@ from pathlib import Path
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif"}
 
 
-# --------------------------------------------------------------------------- #
-# per-file workers (module-level so ProcessPoolExecutor can pickle them)
-# --------------------------------------------------------------------------- #
 def _sha256(path_str: str) -> str:
     return hashlib.sha256(Path(path_str).read_bytes()).hexdigest()
 
 
 def _phash_int(path_str: str) -> int:
-    # imported lazily so the exact-only path needs no Pillow/imagehash
     import imagehash
     from PIL import Image
 
@@ -88,7 +41,7 @@ class BKTree:
     """Metric tree over 64-bit hashes for fast "within Hamming distance d" queries."""
 
     def __init__(self) -> None:
-        self.root: list | None = None  # [hash, {edge_distance: child_node}]
+        self.root: list | None = None  
 
     @staticmethod
     def _d(a: int, b: int) -> int:
@@ -153,8 +106,6 @@ class Union:
         if ra != rb:
             self.parent[ra] = rb
 
-
-# --------------------------------------------------------------------------- #
 def list_images(folder: Path) -> list[Path]:
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in IMG_EXTS)
 
@@ -168,9 +119,7 @@ def copy_all(files: list[Path], dst_dir: Path) -> None:
     dst_dir.mkdir(parents=True, exist_ok=True)
     for f in files:
         shutil.copy2(f, dst_dir / f.name)
-
-
-# --------------------------------------------------------------------------- #
+       
 def clean(
     src: Path,
     dst: Path,
@@ -216,12 +165,12 @@ def clean(
         test_files = list_images(src / "test" / raw_cls)
         train_files = list_images(src / "train" / raw_cls)
 
-        # ---- hash everything (exact) -----------------------------------
+        # hash everything (exact)
         test_sha = _map(_sha256, [str(p) for p in test_files])
         train_sha = _map(_sha256, [str(p) for p in train_files])
         test_sha_set = set(test_sha)
 
-        # ---- optional perceptual hashes ------------------------------
+        # optional perceptual hashes 
         test_ph: list[int] = []
         train_ph: list[int] = []
         test_tree = BKTree()
@@ -231,7 +180,7 @@ def clean(
             for h in test_ph:
                 test_tree.add(h)
 
-        # ---- 1a. drop train images that leak into test --------------
+        # drop train images that leak into test 
         drop_exact_leak: set[int] = set()
         drop_near_leak: set[int] = set()
         for i, sha in enumerate(train_sha):
@@ -243,7 +192,7 @@ def clean(
         survivors = [i for i in range(len(train_files))
                      if i not in drop_exact_leak and i not in drop_near_leak]
 
-        # ---- 1b. collapse internal exact-duplicate groups ----------
+        # collapse internal exact-duplicate groups
         seen_sha: set[str] = set()
         drop_internal_exact: set[int] = set()
         for i in survivors:
@@ -253,7 +202,7 @@ def clean(
                 seen_sha.add(train_sha[i])
         survivors = [i for i in survivors if i not in drop_internal_exact]
 
-        # ---- 2. collapse internal near-duplicate clusters ---------
+        # collapse internal near-duplicate clusters
         drop_internal_near: set[int] = set()
         if use_near:
             uf = Union()
@@ -279,7 +228,7 @@ def clean(
         kept = [train_files[i] for i in survivors]
         per_class_kept[cls] = kept
 
-        # ---- test set output --------------------------------------
+        # test set output 
         if dedupe_test:
             seen: set[str] = set()
             deduped = []
@@ -295,7 +244,7 @@ def clean(
             n_test_drop = 0
             test_out[cls] = test_files
 
-        # ---- per-class report ------------------------------------
+        # report
         log(f"[{cls}]")
         log(f"  raw train pool                 : {len(train_files):>7}")
         log(f"  - exact duplicates of a test image : {len(drop_exact_leak):>7}")
@@ -316,7 +265,7 @@ def clean(
         totals["internal_near"] += len(drop_internal_near)
         totals["kept"] += len(kept)
 
-    # ---- stratified train/val split of the cleaned pool ------------
+    # stratified train/val split of the cleaned pool
     rng = random.Random(seed)
     split_counts: dict[tuple[str, str], int] = {}
     for cls, kept in per_class_kept.items():
@@ -361,8 +310,6 @@ def clean(
     (dst / "_cleaning_report.txt").write_text("\n".join(report_lines) + "\n")
     log(f"\nwrote {dst / '_cleaning_report.txt'}")
 
-
-# --------------------------------------------------------------------------- #
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
