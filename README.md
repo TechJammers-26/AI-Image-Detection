@@ -68,35 +68,46 @@ This matters most for our false-positive numbers. Without canonicalization, a ge
 ```
 AI-Image-Detection/
 ├── src/aigcdet/
+│   ├── __init__.py
 │   └── augmentations.py                # All 6 transforms + EVAL_SUITE + TrainAugment
 ├── scripts/
-│   ├── download_sid.py                 # Downloads SID_Set (Hugging Face, parquet format)
-│   ├── download_cifake.py              # Downloads CIFAKE (via kagglehub)
-│   ├── dataset_sanity_check.py         # Class balance, corrupt-file, duplicate/near-dupe checks
-│   ├── restructure_dataset.py          # Builds the unified ImageFolder train/val/test layout
-│   ├── deduplicate_dataset.py          # Removes duplicates flagged by the sanity check
-│   ├── make_transformed_sets.py        # Applies transforms to a whole folder
-│   └── transform_gallery.py            # Visual sanity-check gallery of all 17 conditions
+│   ├── data_processing/
+│   │   ├── data_pipeline_and_curation.py
+│   │   ├── dataset_sanity_check.py     # Class balance, corrupt-file, duplicate/near-dupe checks
+│   │   ├── deduplicate_dataset.py      # Removes duplicates flagged by the sanity check
+│   │   ├── download_cifake.py          # Downloads CIFAKE (via kagglehub)
+│   │   ├── download_sid.py             # Downloads SID_Set (Hugging Face, parquet format)
+│   │   ├── make_transformed_sets.py    # Applies transforms to a whole folder
+│   │   └── transform_gallery.py        # Visual sanity-check gallery of all 17 conditions
+│   └── prediction/inference/
+│       └── predict.py                  # Image directory in -> JSON predictions out
 ├── tests/
+│   ├── augmentation_test_procedure.py
 │   └── test_augmentations.py           # Unit tests for every transform + policy (16 tests)
 ├── augmentation_scripts/
-│   ├── data_pipeline_and_curation.py
-│   ├── augmentation_transforms.py      # Module smoke test / gallery / unit tests
-│   ├── model_training.py               # policy = none (baseline)
 │   ├── augmentation_continuous.py      # policy = continuous
-│   ├── augmentations_heldout.py        # policy = heldout
 │   ├── augmentation_spec.py            # policy = spec (leakage check)
+│   ├── augmentations_heldout.py        # policy = heldout
 │   ├── evaluations.py                  # Clean + robustness eval, demo benchmark
-│   └── error_analysis.py
+│   └── model_training.py               # policy = none (baseline)
+├── best_checkpoints/                   # Trained weights (see Setup)
+│   ├── efficientnet_b0_continuous_best.pth
+│   ├── efficientnet_b0_heldout_best.pth
+│   ├── efficientnet_b0_none_best.pth
+│   └── efficientnet_b0_spec_best.pth
 ├── demo_results/
-│   ├── predictions_demo_heldout.json   # Image directory in -> JSON predictions out
-│   ├── predictions_demo_continuous.json
-│   ├── predictions_demo_spec.json
-├── checkpoints/                        # Trained weights (see Setup)
+│   ├── predictions_demo_cont.json
+│   ├── predictions_demo_heldout.json
+│   └── predictions_demo_spec.json
+├── outputs/
+│   ├── gallery.png
+│   └── gallery_residual.png
+├── .gitignore
 ├── LICENSE
 ├── Makefile
-├── requirements.txt
-└── README.md
+├── pyproject.toml
+├── README.md
+└── requirements.txt
 ```
 
 ---
