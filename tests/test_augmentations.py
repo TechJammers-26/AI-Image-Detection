@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from aigcdet import augmentations as A  # noqa: E402
 
 
-# -- fixtures --
+#  fixtures 
 def sample_image(seed: int = 0, size=(256, 192)) -> Image.Image:
     """
     Structured + textured test image. A flat colour block would pass blur and
@@ -59,7 +59,7 @@ def _check(cond: bool, msg: str) -> None:
         raise AssertionError(msg)
 
 
-# -- suite wiring --
+# suite wiring 
 def test_suite_is_complete_and_wired():
     """Every spec row exists, every entry has an implementation."""
     expected = {
@@ -182,7 +182,7 @@ def test_center_crop_80_percent_of_side():
     _check(np.array_equal(np.asarray(out), ref), "crop is not centered")
 
 
-# -- stochastics --
+#  stochastics 
 def test_stochastic_eval_is_deterministic_per_image():
     img = sample_image()
     for name in ("noise_s0.05", "jitter_20"):
@@ -225,7 +225,7 @@ def test_seed_is_stable_across_processes():
            f"seed changed with PYTHONHASHSEED: {r1.stdout!r} vs {r2.stdout!r}")
 
 
-# -- train policies --
+# train policies
 def test_heldout_policy_avoids_eval_grid():
     rng_names = ("jpeg", "blur", "resize", "noise", "jitter", "crop")
     rng = np.random.default_rng(7)
@@ -282,7 +282,7 @@ def test_assumptions_are_documented():
                f"ASSUMPTIONS[{key!r}] missing or too thin to put in the README")
 
 
-# -- runner --
+# runner
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
