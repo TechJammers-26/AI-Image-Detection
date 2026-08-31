@@ -339,6 +339,11 @@ We selected **`heldout`** as our flagship model. Its augmentation design, traini
 
 We prioritised a proof-of-concept demonstrating robustness against the locked evaluation grid, rather than a production-grade service, and `heldout`'s in-distribution performance (98.4% clean accuracy, 96.4% mean accuracy across all 16 distortion conditions, only a 2.0% drop from clean) proves this policy is noteworthy.
 
+
+---
+
+### Step 5 — Error analysis & prediction
+
 **heldout — clean confusion matrix**
 
 | | Predicted Real | Predicted AI |
@@ -347,13 +352,6 @@ We prioritised a proof-of-concept demonstrating robustness against the locked ev
 | **True AI** | 114 | 9981 |
 
 At the operating threshold (0.5), `heldout` produces roughly twice as many false positives (212 real images called AI) as false negatives (114 AI images called real) on the clean test split. This is a mild bias towards flagging real content as AI, and aligns with its Youden's-J threshold (0.6187) sitting well above 0.5 to counter this.
-
-
----
-
-### Step 5 — Error analysis & prediction
-
-- **Error analysis** pulls false positives and false negatives from the evaluation output, looks for patterns (which conditions, which source dataset, which severity), and writes the Error Analysis Note.
 
 - **Prediction:**
 ```bash
