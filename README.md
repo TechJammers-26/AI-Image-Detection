@@ -1,292 +1,245 @@
-# Robust Detection of AI-Generated Images Under Real-World Transformations
+# AI-Generated Image Detection — Robustness to Real-World Degradation
 
-Hackathon prototype. Detects AI-generated images and, more importantly, keeps
-detecting them after the image has been compressed, blurred, resized, noised,
-colour-shifted, or cropped on its way across a platform.
+**TikTok TechJam 2026 — Track 5**
 
-**Label convention, project-wide: `1 = AI-generated`, `0 = real.** A false
-positive is a real photo flagged as AI. Do not flip this anywhere.
+> Detecting AI-generated images is only useful if the detector still works after the image has been through the kind of processing real content goes through on a platform — re-compression, resizing, cropping, filters. This project builds and evaluates an AI image detector's robustness to exactly that: six real-world-motivated image transformations, applied at graded severities, tested against a model trained under four different augmentation policies.
 
----
-
-## Quick start
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export PYTHONPATH=src            # or: pip install -e .
-
-python scripts/smoke_test.py     # 30s, no GPU, no data needed. Run this first.
-```
-
-`smoke_test.py` builds a synthetic dataset and exercises the whole chain:
-transforms, data gate, evaluation, robustness table, error analysis, and the
-graded inference script. If it passes on your machine, the harness works and you
-are only waiting on data and a checkpoint.
-
-### The graded script
-
-```bash
-python -m aigcdet.predict --input_dir /path/to/images --output predictions.json \
-    --model outputs/run_heldout/best_model.pt --canonicalize
-```
-
-Output is a JSON list of `{"image_path": ..., "pred": <P(AI-generated) in [0,1]>}`.
-It recurses into subdirectories, never crashes on a corrupt file (unreadable
-images are listed in `predictions.failures.json`), and works with `--model dummy`
-before any checkpoint exists.
+- **Demo video:** _TBD_
+- **Devpost submission:** _TBD_
+- **Repository:** https://github.com/TechJammers-26/AI-Image-Detection
 
 ---
 
-## Ownership map
+## 1. Project Overview
 
-| File | Owner | Deliverable |
+We fine-tune an **EfficientNet-B0** binary classifier (real vs. AI-generated) on a merged corpus of three public datasets (**CIFAKE**, **SID_Set**, and **WildFake**) and evaluate it not just on clean images, but on a locked grid of **17 degradation conditions** spanning six transform families, plus two realistic chained transforms (e.g., resize-then-recompress, crop-then-recompress) that mimic a "repost" pipeline. EfficientNet-B0 has 5.3M parameters — well inside the competition's 2B cap — and uses only publicly available ImageNet-pretrained weights.
+
+To test whether robustness comes from data augmentation or from a training shortcut, we train four separate checkpoints under different augmentation policies and compare them on the *same* held-out test set and the *same* eval grid:
+
+| Policy | What it does | Why it exists |
 |---|---|---|
-| `scripts/check_data.py`, `src/aigcdet/datasets.py` | Hui Shi | clean dataset folders + sanity report |
-| `src/aigcdet/augmentations.py`, `scripts/make_transformed_sets.py`, `tests/` | Yu Yang | transform module |
-| `src/aigcdet/models.py`, `src/aigcdet/train.py` | Erika | `best_model.pt` + training logs |
-| `src/aigcdet/evaluate.py`, `src/aigcdet/metrics.py` | Celine | Robustness Evaluation Summary (#4) |
-| `src/aigcdet/predict.py`, `src/aigcdet/error_analysis.py` | Yi Jun | inference script, Error Analysis Note (#5), README, Devpost, video |
+| `none` | No augmentation | Acts as the baseline model |
+| `continuous` | Random severity sampled from a continuous range per transform family | Standard robust-training approach |
+| `heldout` | Same as `continuous`, but severities that fall too close to the exact eval-grid points are deliberately rejected and resampled | Prevents overfitting; tests whether the model generalizes to degradation severities it never saw in training, not just ones it memorized |
+| `spec` | Trains directly on the exact eval-grid severities | Deliberate leakage check. It measures the train-on-test gap, not a real robustness number |
 
+**Label convention:** `1 = AI-generated`, `0 = real`. All precision and recall figures treat AI-generated as the positive class, so recall answers "of the AI images, how many did we catch?" and a false positive is a real photo flagged as AI.
 
----
+### Robustness evaluation grid
 
-## Data contract (Person 1 produces exactly this)
-
-```
-data/
-  processed/
-    train/real/*   train/fake/*
-    val/real/*     val/fake/*
-    test/real/*    test/fake/*
-  benchmark/               # reference-only. NEVER trained on.
-    real/*                 # COCO val2017 subset (4,998)
-    fake/*                 # DALL-E Advanced subset (8,843)
-```
-
-```bash
-python scripts/check_data.py --data data/processed --benchmark data/benchmark --leaks
-```
-
-Prints `PASSED` or `FAILED`. Nobody starts training on a `FAILED` dataset.
-`load_benchmark()` refuses any path containing `train`, so "we did not train on
-the validation set" is enforced by code rather than by memory at 4am.
-
-**`--leaks` matters more than it looks.** It hashes decoded, downscaled pixels,
-not filenames or bytes. That catches the same image sitting in train as a PNG and
-in test as a JPEG — invisible to filename dedup, and it inflates every number in
-the report.
-
----
-
-## The two ideas this project is actually about
-
-### 1. Container bias is the shortcut, and it looks exactly like success
-
-In the reference benchmark the real class is COCO val2017 (already JPEG, ≤640px)
-and the fake class is DALL-E output (PNG, square, high-res). A model can separate
-those two on **file format and resolution alone**, hit near-perfect validation
-AUC, and collapse the moment a real image arrives as a PNG or a fake arrives
-re-encoded. This is documented in
-[Fake or JPEG? Revealing Common Biases in Generated Image Detection Datasets](https://arxiv.org/html/2403.17608v1),
-which finds that removing compression and resolution bias shifts cross-generator
-performance by more than 11 points — the bias was carrying the score. The same
-fragility is traced to over-fitted local artefacts in
-[GlobalForge](https://arxiv.org/html/2607.14684v1).
-
-`augmentations.canonicalize()` caps every image, both classes, to one long-side
-limit and one encoding before anything else touches it. `check_data.py` flags the
-bias automatically when one class is >95% one container format and the other
-isn't.
-
-**Report clean performance with and without canonicalisation.** The gap is the
-size of the shortcut the model was leaning on. It is the most defensible number
-in the submission and almost nobody else will have it.
-
-### 2. Train-on-test hiding inside "we trained with augmentation"
-
-If training samples blur at σ ∈ {0.5, 1.0, 2.0} and the robustness table reports
-σ ∈ {0.5, 1.0, 2.0}, the table measures memorisation of the exact severities. The
-number looks excellent and means nothing, and one judge question ends it.
-
-`TrainAugment` therefore has explicit policies:
-
-| Policy | Behaviour | Use |
+| Family | Severities tested | Real-world analog |
 |---|---|---|
-| `none` | no augmentation | honest lower bound, always run it |
-| `continuous` | continuous ranges spanning the eval grid | standard practice |
-| `heldout` | continuous ranges **excluding a neighbourhood of every eval point** | headline number |
-| `spec` | exactly the eval grid | only to quantify the leakage gap; emits a warning |
+| Clean | — | Original upload |
+| JPEG compression | q = 90, 70, 50, 30 | Social-media re-encode, messaging apps |
+| Gaussian blur | σ = 0.5, 1.0, 2.0 px | Out-of-focus capture |
+| Resize down→up | 0.5×, 0.25× | Thumbnail generation |
+| Gaussian noise | σ = 0.02, 0.05, 0.10 | Low-light sensor noise |
+| Color jitter | ±20% (brightness/contrast/saturation) | Filter apps, auto-enhance |
+| Center crop | 80% of each side | Profile-picture cropping |
+| Chained | 0.5× resize + q70 JPEG | Repost pipeline |
+| Chained | 80% crop + q50 JPEG | Crop then repost |
 
-Run all four. The ablation table across policies *is* the contribution — closer
-to the intent of
-[Degradation-Consistent Paired Training](https://arxiv.org/html/2604.10102v1),
-which reports +9.1pp on degraded conditions from a training-side intervention.
+For each checkpoint × condition, we report **accuracy, precision, recall, and AUC**, plus the accuracy drop relative to that same checkpoint's clean-image performance — the "Robustness Evaluation Summary" (Deliverable #4).
 
----
+We also run a **reference-only demo benchmark** on a COCO val2017 (real) + DALL·E Advanced (AI-generated) subset. This set is kept fully separate from training and validation data and does not affect the reported score — it exists purely to sanity-check the model on generators and content it has never seen, for the demo video.
 
-## Transform suite
+### The container confound
 
-Exactly the problem statement's grid, plus two composite conditions. Real
-reposted images are never degraded one way at a time, and detectors that survive
-single transforms often die on chains — which makes those the most informative
-rows in the table.
+Our source datasets are confounded before we look at any pixels. The real class arrives as JPEG at moderate resolution; the generated class arrives as PNG, square, and larger. A model can separate those two on file format and resolution alone, report a near-perfect AUC, and never learn anything about synthesis. We would have no way to detect that from the score, because a container classifier and a real detector produce the same number on this data. Published work on this bias found that eliminating compression and resolution confounds shifts cross-generator performance by more than 11 points, which is the scale of the effect we are controlling for.
 
-| Condition | Params | Analog |
-|---|---|---|
-| `jpeg_q{90,70,50,30}` | quality | social re-encode, messaging |
-| `blur_s{0.5,1.0,2.0}` | Gaussian σ px | out-of-focus |
-| `resize_{0.5,0.25}` | down then back up | thumbnail generation |
-| `noise_s{0.02,0.05,0.10}` | σ on a [0,1] scale | low-light sensor noise |
-| `jitter_20` | brightness/contrast/sat ±20% | filter apps, auto-enhance |
-| `crop_80` | 80% of each side | profile-picture cropping |
-| `chain_resize50_jpeg70` | 0.5× then q=70 | full repost pipeline |
-| `chain_crop80_jpeg50` | crop then q=50 | crop then repost |
+Our control is `augmentations.canonicalize()`, which caps every image in both classes to one long-side limit and one encoding before anything else touches it. Because it is applied identically to both classes, it cannot introduce a class-dependent bias — it can only remove one. `dataset_sanity_check.py` also flags the confound automatically when one class is more than 95% a single container format and the other is not.
 
-```bash
-python scripts/make_transformed_sets.py --list          # see them all
-python tests/test_augmentations.py                      # 16 spec-compliance tests
-python scripts/transform_gallery.py --out outputs/gallery.png   # eyeball them
-```
-
-Properties the tests enforce, each of which silently invalidates the whole
-robustness table if broken:
-
-- JPEG is a real libjpeg round trip, and distortion is monotone in quality.
-- Blur is a true Gaussian (cv2 when available, Pillow's box approximation as
-  fallback, and the backend used is recorded in every output manifest).
-- Noise σ is verified against a realised pixel standard deviation of σ·255, which
-  catches a mis-scaled σ — the most common silent bug in these suites.
-- Colour jitter factors stay inside ±20%.
-- `crop_80` on a 200×100 image is exactly 160×80 and exactly centred.
-- Stochastic conditions are **reproducible per image** but **differ across
-  images**. The seed comes from `blake2b`, not Python's `hash()`, which is salted
-  per process and would give two teammates different "deterministic" eval sets.
-- `heldout` sampling never emits a value within the excluded neighbourhood of an
-  eval grid point (400 draws per family).
+This matters most for our false-positive numbers. Without canonicalization, a genuine high-resolution PNG is pushed toward "AI" by the container rule alone, so our false-positive rate would be measured against a real class that happens to be uniformly JPEG — a rate that would not survive real inputs. Canonicalization does cost us signal, since capping resolution and re-encoding both attenuate the high-frequency traces detectors rely on. We accept that cost because a smaller number we can interpret is worth more than a larger number we cannot.
 
 ### Stated assumptions
 
-The brief allows assumptions if stated. These live in
-`augmentations.ASSUMPTIONS`, are copied into every output manifest, and are the
-readings we committed to:
+The brief permits documented interpretations. Ours:
 
-- **Centre crop 80%** = 80% of each *side length* (64% of area). The crop is not
-  resized back up, because profile-picture cropping genuinely discards pixels.
-- **Resize** = bicubic down, bicubic back to the original resolution, so only
-  detail is lost and the output stays resolution-matched to clean.
-- **Blur σ** = Gaussian standard deviation in pixels; kernel is `2·ceil(3σ)+1`.
-- **Noise σ** is on a [0,1] intensity scale, so σ=0.05 ≈ 12.8 grey levels.
-- **Colour jitter** samples an independent factor in [0.8, 1.2] per property,
-  applied brightness → contrast → saturation (these do not commute).
+- **Center crop 80%** means 80% of each side length (64% of area), and the crop is **not** resized back to the original resolution.
+- **Gaussian noise σ** is defined on a [0,1] pixel scale, added per channel, then clipped back to [0,1].
+- **Gaussian blur kernel size** is `2·ceil(3σ)+1`, giving full ±3σ support.
+- **Color jitter** applies brightness → contrast → saturation in that fixed order; ±20% means a factor sampled from [0.8, 1.2].
+- **Resize down→up** uses bicubic in both directions and returns the image to its original resolution, so the degradation is resampling loss rather than a size change.
+- **Chained conditions** apply their components in the order named (`chain_resize50_jpeg70` = resize first, then JPEG).
+- **Stochastic conditions** (`noise_*`, `jitter_20`) are seeded per image from a BLAKE2b hash of the image's relative path, so the eval set is byte-identical on any machine.
 
 ---
 
-## Training
+## 2. Repository Structure and Script Descriptions
 
-```bash
-for P in none continuous heldout spec; do
-  python -m aigcdet.train --data data/processed --arch resnet50 \
-      --aug-policy $P --canonicalize --epochs 6 --out outputs/run_$P
-done
+```
+AI-Image-Detection/
+├── src/aigcdet/
+│   └── augmentations.py                # All 6 transforms + EVAL_SUITE + TrainAugment
+├── scripts/
+│   ├── download_sid.py                 # Downloads SID_Set (Hugging Face, parquet format)
+│   ├── download_cifake.py              # Downloads CIFAKE (via kagglehub)
+│   ├── dataset_sanity_check.py         # Class balance, corrupt-file, duplicate/near-dupe checks
+│   ├── restructure_dataset.py          # Builds the unified ImageFolder train/val/test layout
+│   ├── deduplicate_dataset.py          # Removes duplicates flagged by the sanity check
+│   ├── make_transformed_sets.py        # Applies transforms to a whole folder
+│   └── transform_gallery.py            # Visual sanity-check gallery of all 17 conditions
+├── tests/
+│   └── test_augmentations.py           # Unit tests for every transform + policy (16 tests)
+├── augmentation_scripts/
+│   ├── data_pipeline_and_curation.py
+│   ├── augmentation_transforms.py      # Module smoke test / gallery / unit tests
+│   ├── model_training.py               # policy = none (baseline)
+│   ├── augmentation_continuous.py      # policy = continuous
+│   ├── augmentations_heldout.py        # policy = heldout
+│   ├── augmentation_spec.py            # policy = spec (leakage check)
+│   ├── evaluations.py                  # Clean + robustness eval, demo benchmark
+│   └── error_analysis.py
+├── inference.py                        # Image directory in -> JSON predictions out
+├── checkpoints/                        # Trained weights (not committed — see Setup)
+├── LICENSE
+├── Makefile
+├── requirements.txt
+└── README.md
 ```
 
-Checkpoint selection is on **clean-validation AUC**, not accuracy: the splits can
-be imbalanced and accuracy lets a degenerate all-one-class model win. Validation
-is never augmented — it selects the checkpoint and sets the operating threshold,
-and augmenting it would corrupt both.
-
-Preprocessing (input size, normalisation, canonicalisation flag, the full
-augmentation config) is stored **inside** `best_model.pt`. The single most common
-way a hackathon detector mysteriously scores ~0.5 AUC at demo time is that
-inference resized or normalised differently from training. Storing it removes the
-possibility.
-
-Parameter budget: the brief caps models at <2B parameters. ResNet-50 is 25.6M and
-`train.py` asserts the limit, so the cap is not your constraint — GPU hours are.
-Three seeds of a ResNet-50 beat one run of something exotic, because the story is
-"we measured the effect of the intervention", not "we have a model".
-
 ---
 
-## Evaluation (Deliverable #4)
+## 3. Setup & Installation
+
+**Requirements:** Python 3.13, a CUDA-capable GPU (all notebooks were developed and run on Colab with a **T4 GPU**).
 
 ```bash
-python -m aigcdet.evaluate --data data/processed --split test \
-    --model outputs/run_heldout/best_model.pt --canonicalize \
-    --out outputs/robustness
+git clone https://github.com/TechJammers-26/AI-Image-Detection.git
+cd AI-Image-Detection
 
-python -m aigcdet.evaluate --benchmark data/benchmark \
-    --model outputs/run_heldout/best_model.pt --canonicalize \
-    --out outputs/benchmark_ref          # reference-only, not a scored result
+python3.13 -m venv .venv
+source .venv/bin/activate      # .venv\Scripts\activate on Windows
+
+pip install -r requirements.txt
 ```
 
-Writes `robustness.md` (paste-ready table), `robustness.csv`, `results.json`
-(metrics + git rev + platform + threshold provenance), and `scores.jsonl`
-(per-image, per-condition — feeds error analysis).
+Key dependencies (pinned in `requirements.txt`): `torch==2.13.0`, `torchvision==0.28.0`, `Pillow==12.3.0`, `imagehash==4.3.2` (near-duplicate detection), `numpy==2.5.2`, `kagglehub==1.0.2`.
 
-Three defensible choices:
+**Trained checkpoints are not distributed in this repository.** Reviewers who want to reproduce our numbers should retrain via Step 3 below; each policy takes roughly one Colab T4 session at 6 epochs.
 
-1. **One threshold**, selected on the clean validation split at 1% FPR, reused
-   unchanged for every condition. Re-tuning per transform would let the detector
-   cheat by knowing which degradation it is looking at — something no deployed
-   system can do.
-2. **Transforms applied on the fly** from the clean originals. No 17× disk blowup
-   and no risk of evaluating a stale transformed dump after Person 1 rebuilds.
-3. **AUC leads, accuracy follows.** On the 4,998 real / 8,843 fake reference set,
-   always predicting "fake" already scores 63.9% accuracy. `TPR@1%FPR` is
-   reported alongside because the brief calls out false positives explicitly.
+### Dataset access
+
+1. **CIFAKE** — downloaded automatically via `kagglehub` (no credentials needed, public dataset).
+2. **SID_Set** — downloaded with `download_sid.py`, via the Hugging Face `datasets` library. Ships as parquet (`image`, `mask`, `label` columns, where `0 = real`, `1 = full_synthetic`, `2 = tampered`).
+3. **WildFake** — downloaded from `/Images/Other_based.zip` within the WildFake repository. This subset is entirely AI-generated; it contains no real-image examples.
+4. **Reference demo benchmark** — COCO val2017 (real) + a curated DALL·E Advanced subset (AI-generated), provided as `cocoDemo.zip` and `DallEDemo.zip`. Not used for training; used only for benchmarking during evaluation.
+
+The downloaded data for CIFAKE, SID_Set, and WildFake is as follows:
+
+| Source | Train real | Train fake | Val real | Val fake | Test real | Test fake | Source total |
+|---|---|---|---|---|---|---|---|
+| CIFAKE | 42,500 | 41,397 | 7,500 | 7,305 | 10,000 | 10,000 | 118,702 |
+| SID_Set | 44 | 96 | 9 | 21 | 10 | 20 | 200 |
+| WildFake | 0 | 350 | 0 | 75 | 0 | 75 | 500 |
+| **Split total** | **42,544** | **41,843** | **7,509** | **7,401** | **10,010** | **10,095** | **119,402** |
+
+For Colab-based notebooks: the cleaned dataset zips (`sid_clean.zip`, `cifake_clean.zip`, `wildfake_clean.zip`, `cocoDemo.zip`, `DallEDemo.zip`) live in `/content/drive/MyDrive/TikTok TechJam/dataset`. Each notebook mounts Drive and pulls from that path via `GOOGLE_DRIVE_DATASET_PATH`.
 
 ---
 
-## Error analysis (Deliverable #5)
+## 4. Steps to Reproduce
 
-```bash
-python -m aigcdet.error_analysis --scores outputs/robustness/scores.jsonl \
-    --out outputs/error_analysis
+### Step 1 — Data pipeline (`data_pipeline_and_curation.py`)
+
+All zip files are downloaded and run through `dataset_sanity_check.py` (class balance, corrupted-file check, and exact/near-duplicate detection — important for catching cross-split leakage), then `restructure_dataset.py` and `deduplicate_dataset.py` (the latter only if `dataset_sanity_check.py` reports exact duplicates) to produce a unified ImageFolder layout:
+
+```
+dataset/
+├── train/{real,fake}/
+├── val/{real,fake}/
+└── test/{real,fake}/
 ```
 
-Produces the note, `failures.csv`, and FP/FN contact sheets. It reads
-`scores.jsonl` only — no model, no GPU — so Person 5 can iterate on the write-up
-while Person 3 is still training.
+This step also prepares the COCO/DALL·E reference demo set, kept in a separate folder from the training data. Output: `sid_clean.zip`, `cifake_clean.zip`, `wildfake_clean.zip`, `cocoDemo.zip`, `DallEDemo.zip`.
 
-The centrepiece is **flip analysis**: not "which images are wrong" but "which
-images were *right* when clean and became *wrong* after this transform". That
-separates fragility from intrinsic difficulty and is the direct evidence for the
-robustness claim.
+### Step 2 — Verify the augmentation module (`augmentation_transforms.py`)
+
+Run this before training. It renders the visual gallery (all 17 conditions against a test image) and runs the unit test suite (`pytest tests/test_augmentations.py`, 16 tests) to confirm `augmentations.py` matches the spec table exactly before anyone builds on top of it.
+
+The 17 conditions are:
+
+| # | Condition name | Family | Params | Stochastic | Real-world analog |
+|:---:|---|---|---|:---:|---|
+| 1 | `clean` | clean | — | No | Original upload |
+| 2 | `jpeg_q90` | jpeg | quality = 90 | No | Social re-encode, messaging |
+| 3 | `jpeg_q70` | jpeg | quality = 70 | No | Social re-encode, messaging |
+| 4 | `jpeg_q50` | jpeg | quality = 50 | No | Social re-encode, messaging |
+| 5 | `jpeg_q30` | jpeg | quality = 30 | No | Social re-encode, messaging |
+| 6 | `blur_s0.5` | blur | sigma = 0.5 | No | Out-of-focus capture |
+| 7 | `blur_s1.0` | blur | sigma = 1.0 | No | Out-of-focus capture |
+| 8 | `blur_s2.0` | blur | sigma = 2.0 | No | Out-of-focus capture |
+| 9 | `resize_0.5` | resize | scale = 0.5 | No | Thumbnail generation |
+| 10 | `resize_0.25` | resize | scale = 0.25 | No | Thumbnail generation |
+| 11 | `noise_s0.02` | noise | sigma = 0.02 | Yes | Low-light sensor noise |
+| 12 | `noise_s0.05` | noise | sigma = 0.05 | Yes | Low-light sensor noise |
+| 13 | `noise_s0.1` | noise | sigma = 0.1 | Yes | Low-light sensor noise |
+| 14 | `jitter_20` | jitter | strength = 0.2 | Yes | Filter apps, auto-enhance |
+| 15 | `crop_80` | crop | fraction = 0.8 | No | Profile-picture cropping |
+| 16 | `chain_resize50_jpeg70` | chain | 0.5× + q70 | No | Full repost pipeline |
+| 17 | `chain_crop80_jpeg50` | chain | crop 80% + q50 | No | Crop then repost |
+
+Fifteen of the 17 are fully deterministic. `clean` is the undegraded reference used to compute accuracy drop, so 16 are actual degradations.
+
+### Step 3 — Train four checkpoints (`none`, `spec`, `continuous`, `heldout`)
+
+Each notebook loads the consolidated dataset, builds `EfficientNet-B0` with an ImageNet-pretrained backbone and a replaced single-logit classifier head, and trains for 6 epochs (`AdamW`, cosine LR schedule), saving the best-AUC checkpoint:
+
+| Notebook | Policy | Output checkpoint |
+|---|---|---|
+| `model_training.py` | `none` | `efficientnet_b0_none_best.pth` |
+| `augmentation_continuous.py` | `continuous` | `efficientnet_b0_continuous_best.pth` |
+| `augmentations_heldout.py` | `heldout` | `efficientnet_b0_heldout_best.pth` |
+| `augmentation_spec.py` | `spec` | `efficientnet_b0_spec_best.pth` |
+
+Run each with **Runtime → Restart runtime → Run all** for a reproducible result.
+
+### Step 4 — Evaluate (`evaluations.py`)
+
+Loads all four checkpoints and:
+
+- Computes **accuracy, precision, recall, and AUC** on the untouched test split.
+- Runs every checkpoint through all 17 eval-grid conditions, deterministically — each image's stochastic transforms are seeded from the image's own file path, so results are identical on any machine.
+- Aggregates into the **Robustness Evaluation Summary** table (per-condition accuracy/AUC/loss for all four policies, plus accuracy-drop-from-clean).
+- Runs the reference-only COCO/DALL·E demo benchmark.
+
+This outputs the CSVs and tables used for the demo video and the robustness evaluation summary.
+
+### Step 5 — Error analysis & inference
+
+- **Error analysis** pulls false positives and false negatives from the evaluation output, looks for patterns (which conditions, which source dataset, which severity), and writes the Error Analysis Note.
+- **Inference:**
+
+  ```bash
+  python3 inference.py --input_dir <folder_of_images> --output preds.json
+  ```
+
+  This produces a JSON list of `{"image_path": "...", "pred": 0.9312}`, where `pred` is P(AI-generated) as a float in [0,1]. Images that fail to decode are recorded in a `preds.failures.json` sidecar rather than dropped silently. Test this end-to-end against a small folder before recording the demo.
 
 ---
 
-## Limitations
+## 5. Limitations & What We'd Improve With More Time
 
-- Robustness is measured against the six specified transforms plus two chains.
-  An adversary who knows the detector can strip its cue deliberately; nothing
-  here simulates that.
-- Held-out **images**, not held-out **generators**. Generalisation to an unseen
-  generator is the harder claim and is only partially addressed.
-- Scores are separable but not calibrated. `pred` should not be read as a literal
-  probability.
-- Trained at hackathon scale on subsampled public datasets, so absolute numbers
-  are not comparable to published benchmarks.
+- **Dataset diversity across sources (not class balance).** Real-vs-fake balance is close to even in every split (train 42,544 real / 41,843 fake; val 7,509 / 7,401; test 10,010 / 10,095). However, because the SID_Set and WildFake files are large, we mainly opted for CIFAKE images. CIFAKE accounts for the large majority of images by volume, while WildFake and SID_Set — the two sources meant to add variety beyond CIFAKE's generator — contribute far fewer (WildFake: 350/75/75 across train/val/test, and fake-only; SID_Set: 200 images total). Near-ceiling clean-validation numbers across all four policies likely reflect CIFAKE's scale more than true cross-generator robustness. Given more time, we'd oversample WildFake and SID_Set relative to CIFAKE (or cap CIFAKE's contribution) so no single generator dominates what the model learns, and report metrics per source dataset separately so this doesn't hide inside an aggregate number.
+- **Single fixed decision threshold.** All reported accuracy, precision, and recall use a 0.5 cutoff on the sigmoid output. We haven't calibrated or swept the threshold per degradation condition, even though confidence naturally shifts under heavy degradation. A proper threshold analysis or a calibration step would make the precision and recall numbers more representative of a real deployment setting.
+- **One backbone only.** We evaluated EfficientNet-B0 exclusively; we didn't get to compare against a ResNet or a small ViT backbone to see whether the robustness gap between policies is architecture-dependent.
+- **A curated, not adversarial, degradation set.** The 17-condition grid covers common real-world processing (compression, blur, resize, noise, jitter, crop, and two chained pipelines) but not adversarially optimized perturbations or multi-generation repost chains — re-uploading a repost of a repost. Extending the eval grid to compounding degradations would be a natural next step.
+- **Reference benchmark size.** The COCO/DALL·E reference-only set is intentionally small (demo-video scale) rather than a large independent test set. It is useful as a sanity check, not as a statistically powered generalization claim.
 
-## Datasets
+---
 
-- [CIFAKE](https://www.kaggle.com/datasets/birdy654/cifake-real-and-ai-generated-synthetic-images)
-  — 120k images at 32×32 ([dataset card](https://huggingface.co/datasets/dragonintelligence/CIFAKE-image-dataset)).
-  Useful as a same-day pipeline smoke test; note that 80% centre crop of 32px is
-  25px and JPEG q30 on a thumbnail is close to noise, so robustness conclusions
-  drawn at that resolution do not transfer to native-resolution evaluation.
-- [SID_Set](https://huggingface.co/datasets/saberzl/SID_Set) — 210k train /
-  30k val, roughly 140GB download
-  ([card](https://huggingface.co/datasets/saberzl/SID_Set/blob/main/README.md)).
-  Stream it or sample; do not pull it whole.
-- [WildFake](https://modelscope.cn/datasets/hy2628982280/WildFake/summary).
-- Reference-only benchmark: COCO val2017 (4,998) + DALL·E Advanced (8,843).
-  Never used for training.
+## 6. Team Member Contributions
 
-## Tooling
+| Name | Role | Responsibilities | Deliverable owned |
+|---|---|---|---|
+| Hui Shi | **Data Pipeline & Dataset Curation** | Downloaded and curated CIFAKE, SID_Set, and WildFake; built the ImageFolder train/val/test restructuring; ran class-balance, corruption, and duplicate sanity checks; prepared the reference-only COCO + DALL·E demo benchmark set, kept separate from training data. | Clean, ready-to-use dataset folders |
+| Yu Yang | **Augmentation / Transform Module** | Built all 6 transform functions to spec (JPEG compression, Gaussian blur, resize down→up, Gaussian noise, color jitter, center crop); built a folder-level batch wrapper; unit-tested every transform against the spec table; verified augmentations by visual inspection. | `augmentations.py`, `make_transformed_sets.py`, `transform_gallery.py` |
+| Erika & Celine | **Model & Training Pipeline** | Selected and set up the EfficientNet-B0 backbone; created and adapted the training script; integrated the augmentation module for the robust-training runs; trained and tuned all four policy checkpoints. | Trained checkpoints + training logs and loss curves |
+| Erika & Celine | **Evaluation & Robustness Analysis** | Built the clean eval script (accuracy, precision, recall, AUC); built the robustness eval script running the test set through every transform × severity; aggregated results into the Robustness Evaluation Summary; ran the COCO/DALL·E reference benchmark. | Robustness Evaluation Summary (Deliverable #4) |
+| Yi Jiun | **Error Analysis, Inference Script & Packaging** | Built the error analysis script and wrote the Error Analysis Note; built and tested the inference script end-to-end; owns this README, the Devpost writeup, and the demo video. | README, Devpost description, demo video, inference script |
 
-Python 3.10+, PyTorch + torchvision, Pillow, NumPy, OpenCV (optional, for the
-true Gaussian). `metrics.py` is pure NumPy — no scikit-learn — so the harness runs
-in a fresh venv on a laptop with no GPU stack, which is what you want at 3am on
-day 3.
+---
+
+## 7. Acknowledgments
+
+Built for **TikTok TechJam 2026, Track 5**. Uses the CIFAKE, SID_Set, and WildFake datasets, and a reference-only subset of COCO val2017 and DALL·E Advanced generations for demo purposes.
