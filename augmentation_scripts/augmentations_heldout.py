@@ -428,17 +428,9 @@ class AIImageDataset(Dataset):
             filepath
         ).convert("RGB")
 
-        # ----------------------------------------------------
-        # CONTINUOUS AUGMENTATION
-        # ----------------------------------------------------
-
+        # Continuous augmentation
         if self.augmentation is not None:
             image = self.augmentation(image)
-
-        # ----------------------------------------------------
-        # Standard preprocessing
-        # ----------------------------------------------------
-
         if self.transform is not None:
             image = self.transform(image)
 
@@ -461,7 +453,7 @@ train_transform = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
     canonical_then_augment,
-    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),#PIL must sit before ToTensor
+    transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
     transforms.ToTensor(),
     transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
@@ -613,7 +605,7 @@ def train_one_epoch(
             non_blocking=True
         )
 
-        # IMPORTANT: BCEWithLogitsLoss needs FLOAT labels
+        # BCEWithLogitsLoss needs FLOAT labels
         labels = labels.float().to(
             device,
             non_blocking=True
@@ -789,10 +781,7 @@ for epoch in range(EPOCHS):
     print(f"Epoch {epoch + 1}/{EPOCHS}")
     print("=" * 60)
 
-    # --------------------------------------------------------
-    # TRAIN
-    # --------------------------------------------------------
-
+    #training
     (
         train_loss,
         train_accuracy,
@@ -805,10 +794,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # --------------------------------------------------------
-    # CLEAN VALIDATION
-    # --------------------------------------------------------
-
+    # Clean validation
     (
         val_loss,
         val_accuracy,
@@ -820,9 +806,7 @@ for epoch in range(EPOCHS):
         device
     )
 
-    # --------------------------------------------------------
-    # SAVE HISTORY
-    # --------------------------------------------------------
+    # save history
 
     history["epoch"].append(epoch + 1)
 
@@ -850,10 +834,6 @@ for epoch in range(EPOCHS):
         val_auc
     )
 
-    # --------------------------------------------------------
-    # PRINT
-    # --------------------------------------------------------
-
     print(
         f"Train Loss:      {train_loss:.4f}"
     )
@@ -880,10 +860,7 @@ for epoch in range(EPOCHS):
         f"Clean Val AUC:      {val_auc:.4f}"
     )
 
-    # --------------------------------------------------------
-    # SAVE BEST CHECKPOINT
-    # --------------------------------------------------------
-
+    # SAVE BEST CHECKPOINT!
     if val_auc > best_val_auc:
 
         best_val_auc = val_auc
