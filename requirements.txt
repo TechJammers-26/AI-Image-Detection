@@ -9,3 +9,5 @@ torchvision>=0.16
 
 # Optional: plots for the report / demo video
 matplotlib>=3.7
+
+#cleaned dataset google drive folder: 
