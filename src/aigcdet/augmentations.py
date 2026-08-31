@@ -1,19 +1,5 @@
 """
-augmentations.py  --  OWNER: Person 2
-
-Single source of truth for every image transformation in this project.
-
-Two DIFFERENT consumers, two DIFFERENT APIs:
-
-  1. EVALUATION  (Person 4, Person 5)
-     `EVAL_SUITE` / `get_eval_transform(name)`
-     Deterministic, exactly the parameter grid in the problem statement.
-     Same image + same transform name => byte-identical output on any machine.
-
-  2. TRAINING    (Person 3)
-     `build_train_augment(policy=...)`
-     Randomised, *continuous* parameter ranges. Deliberately NOT the eval grid.
-     See the leakage note below.
+create augmentations package for augmentations later.
 """
 
 from __future__ import annotations
@@ -63,7 +49,7 @@ ASSUMPTIONS: Dict[str, str] = {
     ),
 }
 
-# --Blur backend--
+# Blur backend
 try:  # pragma: no cover - environment dependent
     import cv2  # type: ignore
 
@@ -74,16 +60,10 @@ except Exception:  # pragma: no cover
 
 
 def blur_backend() -> str:
-    """Whichever Gaussian implementation is live goes into the output manifest."""
     return _BLUR_BACKEND
 
-# --Determinism helper--
+# Determinism helper
 def stable_seed(*parts: object) -> int:
-    """
-    Python's hash() is salted (adding unique, random data per process, so it CANNOT 
-    be used here -- two teammates would generate different "deterministic" eval sets. 
-    blake2b is stable across processes, machines and Python versions.
-    """
     h = hashlib.blake2b(digest_size=8)
     for p in parts:
         h.update(str(p).encode("utf-8"))
@@ -94,12 +74,9 @@ def stable_seed(*parts: object) -> int:
 def _as_rgb(img: Image.Image) -> Image.Image:
     return img if img.mode == "RGB" else img.convert("RGB")
 
-
-# ==========================================================================
-# The six primitives
-# ==========================================================================
+# The six augmentations
 def jpeg_compress(img: Image.Image, quality: int) -> Image.Image:
-    """Real JPEG round trip. quality in 1..95 (spec uses 90/70/50/30)."""
+    """JPEG compression in quality 90/70/50/30"""
     img = _as_rgb(img)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=int(quality), subsampling="4:2:0")
@@ -123,7 +100,7 @@ def gaussian_blur(img: Image.Image, sigma: float) -> Image.Image:
 
 
 def resize_downup(img: Image.Image, scale: float) -> Image.Image:
-    """Bicubic downscale by `scale`, bicubic upscale back to original size."""
+    """Bicubic downscale by `scale`, then bicubic upscale back to original size."""
     img = _as_rgb(img)
     w, h = img.size
     dw, dh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
@@ -132,7 +109,7 @@ def resize_downup(img: Image.Image, scale: float) -> Image.Image:
 
 
 def gaussian_noise(img: Image.Image, sigma: float, rng: np.random.Generator) -> Image.Image:
-    """Additive i.i.d. Gaussian noise, sigma on a [0,1] intensity scale."""
+    """Adding Gaussian noise, sigma on a [0,1] intensity scale."""
     img = _as_rgb(img)
     if sigma <= 0:
         return img.copy()
@@ -148,11 +125,7 @@ def color_jitter(
     rng: np.random.Generator,
 ) -> Image.Image:
     """
-    Multiplicative brightness/contrast/saturation jitter.
-
-    'strength' = 0.20 means each factor is approx U[0.8, 1.2].
-    Order is fixed (brightness -> contrast -> saturation); these operations do
-    not commute, so a random order would add variance we cannot attribute.
+    'strength' = 0.20 means each factor is approximately U[0.8, 1.2].
     """
     img = _as_rgb(img)
     lo, hi = 1.0 - strength, 1.0 + strength
@@ -163,10 +136,7 @@ def color_jitter(
 
 def center_crop(img: Image.Image, fraction: float, by_area: bool = False) -> Image.Image:
     """
-    Center crop keeping 'fraction' of each side (default) or of the area.
-
-    See ASSUMPTIONS['crop_fraction'] -- the output is SMALLER than the input and
-    is intentionally not resized back.
+    Center crop to crop 80%.
     """
     img = _as_rgb(img)
     side = float(np.sqrt(fraction)) if by_area else float(fraction)
@@ -180,8 +150,6 @@ def identity(img: Image.Image) -> Image.Image:
     """The clean baseline. Present so 'clean' is a row in the same table."""
     return _as_rgb(img).copy()
 
-
-# Eval suite: the exact grid from the problem statement
 @dataclass(frozen=True)
 class TransformSpec:
     """One column of the Robustness Evaluation Summary."""
@@ -218,8 +186,6 @@ _EVAL_IMPL: Dict[str, Callable] = {
     },
     "jitter_20": lambda im, rng: color_jitter(im, 0.20, rng),
     "crop_80": lambda im: center_crop(im, 0.80),
-    # Composite: the realistic case. A reposted image is resized AND re-encoded,
-    # never one in isolation.
     "chain_resize50_jpeg70": lambda im: jpeg_compress(resize_downup(im, 0.5), 70),
     "chain_crop80_jpeg50": lambda im: jpeg_compress(center_crop(im, 0.80), 50),
 }
@@ -248,8 +214,6 @@ EVAL_SUITE: Tuple[TransformSpec, ...] = (
     _mk("chain_resize50_jpeg70", "chain", "0.5x + q70", "Repost pipeline", {}),
     _mk("chain_crop80_jpeg50", "chain", "crop80 + q50", "Crop then repost", {}),
 )
-
-# in Python (str(0.10) == '0.1'), so the two agree. Guarded by a test.
 
 EVAL_BY_NAME: Dict[str, TransformSpec] = {t.name: t for t in EVAL_SUITE}
 SPEC_ONLY: Tuple[str, ...] = tuple(t.name for t in EVAL_SUITE if t.family != "chain")
@@ -291,9 +255,6 @@ _TRAIN_RANGES = {
     "crop": (0.7, 1.0),      # side fraction
 }
 
-# The reported severities are genuinely unseen. Half-widths 
-# are chosen to be perceptually meaningful, not
-# token: +/- 5 JPEG quality points, +/- 0.15 sigma, etc.
 _HELDOUT_POINTS = {
     "jpeg": ([90, 70, 50, 30], 5.0),
     "blur": ([0.5, 1.0, 2.0], 0.15),
@@ -319,20 +280,6 @@ def _sample_param(family: str, rng: np.random.Generator, policy: str) -> float:
 
 
 class TrainAugment:
-    """
-    Randomised pixel-space augmentation for training.
-
-    Usage, note it goes BEFORE ToTensor:
-
-        aug = TrainAugment(policy="heldout", n_ops=(0, 2), p=0.9, seed=0)
-        img = aug(pil_img)          # PIL -> PIL
-        x   = to_tensor(normalize(img))
-
-    'n_ops=(0,2)' composes 0..2 transforms per sample. Composition matters:
-    single-op augmentation teaches the model to undo one degradation at a time,
-    which is not what a reposted image looks like.
-    """
-
     FAMILIES: Tuple[str, ...] = ("jpeg", "blur", "resize", "noise", "jitter", "crop")
 
     def __init__(
@@ -358,7 +305,7 @@ class TrainAugment:
         self.families = tuple(families) if families else self.FAMILIES
         self._rng = np.random.default_rng(seed)
 
-    # -- introspection, so the training log records exactly what was used --
+    # Log records of what was used 
     def config(self) -> Dict[str, object]:
         return {
             "policy": self.policy,
@@ -389,8 +336,6 @@ class TrainAugment:
     def __call__(self, img: Image.Image, image_key: str | None = None) -> Image.Image:
         if self.policy == "none":
             return _as_rgb(img).copy()
-        # Per-sample RNG when a key is given -> reproducible epochs for ablation testing
-        # (removing of specific components and analysing the effects on the model's performance).
         rng = (
             np.random.default_rng(stable_seed("train", self.policy, image_key))
             if image_key is not None
@@ -411,7 +356,6 @@ class TrainAugment:
 def build_train_augment(policy: str = "heldout", **kw) -> TrainAugment:
     """Factory used by configs/*.yaml so the policy is logged, not hardcoded."""
     return TrainAugment(policy=policy, **kw)
-
 
 # Shortcut / container-bias neutralisation
 def canonicalize(
