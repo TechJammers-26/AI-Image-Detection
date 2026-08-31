@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Sanity-check an ImageFolder-style dataset: <root>/<split>/<class>/*.img
-
-Reports:
+"""
+Sanity-check reports:
   * image counts per split/class and class balance
   * unexpected file types / extension-vs-format mismatches
   * corrupted / unreadable images
@@ -11,9 +10,7 @@ Reports:
 
 Exit code: 0 = clean, 1 = warnings, 2 = failures.
 
-Usage:
-  python dataset_sanity_check.py ./data/dataset [--near-dupes]
-                                 [--near-dupe-threshold 5] [--workers N]
+All files accepted exited with clean (ie. 0)
 """
 from __future__ import annotations
 
@@ -36,10 +33,7 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp", ".tif", ".tiff"}
 EXPECTED_SPLITS = ("train", "val", "test")
 BALANCE_TOL = 0.10  # fraction deviation from an even class split before WARN
 
-
-# --------------------------------------------------------------------------- #
 # per-file worker
-# --------------------------------------------------------------------------- #
 def inspect(path_str: str, want_phash: bool):
     """Return dict describing one file. Runs in a worker process."""
     p = Path(path_str)
@@ -63,7 +57,7 @@ def inspect(path_str: str, want_phash: bool):
 
     try:
         with Image.open(p) as im:
-            im.verify()  # cheap structural check
+            im.verify()  # structural check
         with Image.open(p) as im:
             im.load()  # force full decode
             rgb = im.convert("RGB")
@@ -82,12 +76,10 @@ def inspect(path_str: str, want_phash: bool):
     return out
 
 
-# --------------------------------------------------------------------------- #
 # near-dupe grouping via BK-tree over perceptual hashes
-# --------------------------------------------------------------------------- #
 class BKTree:
     def __init__(self):
-        self.root = None  # (hash_int, children: {dist: node})
+        self.root = None 
 
     @staticmethod
     def _d(a, b):
@@ -136,9 +128,7 @@ class Union:
         ra, rb = self.find(a), self.find(b)
         if ra != rb:
             self.parent[ra] = rb
-
-
-# --------------------------------------------------------------------------- #
+         
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", type=Path, help="dataset root containing <split>/<class>/ dirs")
@@ -154,13 +144,12 @@ def main():
         print(f"FATAL: not a directory: {root}", file=sys.stderr)
         sys.exit(2)
 
-    # ---- discover layout ----------------------------------------------------
     splits = sorted(d.name for d in root.iterdir() if d.is_dir())
     if not splits:
         print(f"FATAL: no split subdirectories under {root}", file=sys.stderr)
         sys.exit(2)
 
-    files: list[tuple[str, str, str]] = []  # (split, class, path)
+    files: list[tuple[str, str, str]] = []  
     non_image_files: list[str] = []
     classes_by_split: dict[str, set[str]] = defaultdict(set)
     empty_class_dirs: list[str] = []
@@ -196,7 +185,7 @@ def main():
 
     by_path = {r["path"]: r for r in results}
 
-    # ---- counts -----------------------------------------------------------
+    # counts 
     counts: dict[tuple[str, str], int] = defaultdict(int)
     all_classes = set()
     for split, cls, _ in files:
@@ -223,7 +212,7 @@ def main():
     print("-" * 32)
     print(f"{'':<10}{'GRAND':<10}{grand:>12,}")
 
-    # ---- class balance --------------------------------------------------
+    # cheking class balance
     print("\n" + "=" * 60)
     print("CLASS BALANCE")
     print("=" * 60)
@@ -241,7 +230,7 @@ def main():
         if worst > BALANCE_TOL:
             warn.append(f"'{split}' class imbalance: {desc} (>{BALANCE_TOL*100:.0f}% from even)")
 
-    # ---- structural / missing ----------------------------------------
+    # checking structural/missing
     print("\n" + "=" * 60)
     print("STRUCTURE")
     print("=" * 60)
@@ -259,7 +248,7 @@ def main():
     print(f"classes found: {all_classes}")
     print(f"empty class dirs: {empty_class_dirs or 'none'}")
 
-    # ---- file types --------------------------------------------------
+    # file types
     print("\n" + "=" * 60)
     print("FILE TYPES")
     print("=" * 60)
@@ -284,7 +273,7 @@ def main():
             rel = Path(p).relative_to(root)
             print(f"    {rel}  -> actual {by_path[p]['fmt']}")
 
-    # ---- corruption ------------------------------------------------
+    # corruption 
     print("\n" + "=" * 60)
     print("CORRUPTED / UNREADABLE")
     print("=" * 60)
@@ -299,7 +288,7 @@ def main():
         if len(corrupt) > args.max_list:
             print(f"  ... and {len(corrupt) - args.max_list} more")
 
-    # ---- exact duplicates ----------------------------------------
+    # exact duplicates 
     print("\n" + "=" * 60)
     print("EXACT DUPLICATES (identical file bytes)")
     print("=" * 60)
@@ -311,7 +300,7 @@ def main():
     dup_files = sum(len(g) - 1 for g in dup_groups)
     cross_split = 0
     if not dup_groups:
-        print("  none ✓")
+        print("  none ")
     else:
         for g in dup_groups:
             sps = {Path(p).relative_to(root).parts[0] for p in g}
@@ -327,7 +316,7 @@ def main():
         if cross_split:
             fail.append(f"{cross_split} duplicate group(s) leak across splits")
 
-    # ---- near duplicates ---------------------------------------
+    # check near duplicates 
     if args.near_dupes:
         print("\n" + "=" * 60)
         print(f"NEAR DUPLICATES (pHash Hamming <= {args.near_dupe_threshold})")
@@ -373,7 +362,7 @@ def main():
             if n_cross:
                 fail.append(f"{n_cross} near-duplicate cluster(s) span splits")
 
-    # ---- verdict --------------------------------------------------
+    # printing verdict 
     print("\n" + "=" * 60)
     print("VERDICT")
     print("=" * 60)
