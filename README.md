@@ -4,10 +4,9 @@
 
 > Detecting AI-generated images is only useful if the detector still works after the image has been through the kind of processing real content goes through on a platform — re-compression, resizing, cropping, filters. This project builds and evaluates an AI image detector's robustness to exactly that: six real-world-motivated image transformations, applied at graded severities, tested against a model trained under four different augmentation policies.
 
-- **Demo video:** _TBD_
-- **Devpost submission:** _TBD_
+- **Demo video:** https://youtu.be/GYSgM-fP8v4
 - **Repository:** https://github.com/TechJammers-26/AI-Image-Detection
-
+- **Cleaned Dataset:** https://drive.google.com/drive/folders/19DBJ-A4DaWMVt5lbpMty1tngD19SZZ9G?usp=sharing
 ---
 
 ## 1. Project Overview
